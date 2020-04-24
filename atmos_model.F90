@@ -801,6 +801,10 @@ subroutine atmos_model_exchange_phase_1 (Atmos, rc)
       ! -- export fields to chemistry
       call update_atmos_chemistry('export', rc=localrc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+    else if( IPD_Control%cplaqm ) then
+      ! -- export fields to chemistry
+      call update_atmos_aqm('export', rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__, rcToReturn=rc)) return
     endif
 
  end subroutine atmos_model_exchange_phase_1
@@ -836,6 +840,10 @@ subroutine atmos_model_exchange_phase_2 (Atmos, rc)
     if( IPD_Control%cplchm ) then
       ! -- import fields from chemistry
       call update_atmos_chemistry('import', rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+    else if( IPD_Control%cplaqm ) then
+      ! -- import fields from chemistry
+      call update_atmos_aqm('import', rc=localrc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__, rcToReturn=rc)) return
     endif
 
@@ -1514,6 +1522,394 @@ subroutine update_atmos_chemistry(state, rc)
   end select
 
 end subroutine update_atmos_chemistry
+
+!#######################################################################
+! <SUBROUTINE NAME="update_atmos_aqm">
+! <DESCRIPTION>
+!  Populate exported aqm fields with current atmospheric state
+!  data (state='export'). Update tracer concentrations for atmospheric
+!  aqm with values from aqm component (state='import').
+!  Fields should be exported/imported from/to the atmospheric state
+!  after physics calculations.
+!
+!  NOTE: It is assumed that all the chemical tracers follow the standard
+!  atmospheric tracers, which end with ozone. The order of the chemical
+!  tracers must match their order in the aqm component.
+!
+!  Requires:
+!         IPD_Data
+!         Atm_block
+! </DESCRIPTION>
+subroutine update_atmos_aqm(state, rc)
+
+  use ESMF
+  use module_cplfields,   only: cplFieldGet
+
+  character(len=*),  intent(in)  :: state
+  integer, optional, intent(out) :: rc
+
+  !--- local variables
+  integer :: localrc
+  integer :: ni, nj, nk, nt, ntb, nte
+  integer :: nb, ix, i, j, k, it
+  integer :: ib, jb
+
+  real(ESMF_KIND_R8), dimension(:,:,:),   pointer :: prsl, phil, &
+                                                     phii, temp, &
+                                                     ua, va,     &
+                                                     smc, stc,   &
+                                                     cldf
+  real(ESMF_KIND_R8), dimension(:,:,:,:), pointer :: q
+
+  real(ESMF_KIND_R8), dimension(:,:), pointer :: canopy, oro, cmm, rca,  &
+    rainc, rain, uustar, slmsk, stype, area, hpbl, dqsfc, dtsfc, nswsfc, &
+    psfc, zorl, q2m, t2m, tsfc, u10m, v10m, vfrac, xlai, fice, sncovr
+
+  ! -- begin
+  if (present(rc)) rc = ESMF_SUCCESS
+
+  ni  = Atm_block%iec - Atm_block%isc + 1
+  nj  = Atm_block%jec - Atm_block%jsc + 1
+  nk  = Atm_block%npz
+
+  !--- get total number of tracers
+  call get_number_tracers(MODEL_ATMOS, num_tracers=nt)
+
+  select case (trim(state))
+    case ('import')
+      !--- retrieve references to allocated memory for each field
+      call cplFieldGet(state,'inst_tracer_mass_frac', farrayPtr4d=q, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      !--- do not import tracer concentrations by default
+      ntb = nt + 1
+      nte = nt
+
+      !--- if chemical tracers are present, set bounds appropriately
+      if (IPD_Control%ntchm > 0) then
+        if (IPD_Control%ntchs /= NO_TRACER) then
+          ntb = IPD_Control%ntchs
+          nte = IPD_Control%ntchm + ntb - 1
+        end if
+      end if
+
+      !--- tracer concentrations
+      do it = ntb, nte
+!$OMP parallel do default (none) &
+!$OMP             shared  (it, nk, nj, ni, Atm_block, IPD_Data, q)  &
+!$OMP             private (k, j, jb, i, ib, nb, ix)
+        do k = 1, nk
+          do j = 1, nj
+            jb = j + Atm_block%jsc - 1
+            do i = 1, ni
+              ib = i + Atm_block%isc - 1
+              nb = Atm_block%blkno(ib,jb)
+              ix = Atm_block%ixp(ib,jb)
+              IPD_Data(nb)%Stateout%gq0(ix,k,it) = q(i,j,k,it)
+            enddo
+          enddo
+        enddo
+      enddo
+
+      if (IPD_Control%debug) then
+        write(6,'("update_atmos: ",a,": qgrs - min/max/avg",3g16.6)') &
+          trim(state), minval(q), maxval(q), sum(q)/size(q)
+      end if
+
+    case ('export')
+      !--- retrieve references to allocated memory for each field
+
+      call cplFieldGet(state,'canopy_moisture_storage', farrayPtr2d=canopy, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'height', farrayPtr2d=oro, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_aerodynamic_conductance', farrayPtr2d=cmm, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_canopy_resistance', farrayPtr2d=rca, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_cloud_frac_levels', farrayPtr3d=cldf, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_convective_rainfall_amount', farrayPtr2d=rainc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_friction_velocity', farrayPtr2d=uustar, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_geop_interface', farrayPtr3d=phii, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_geop_levels', farrayPtr3d=phil, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_land_sea_mask', farrayPtr2d=slmsk, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_laten_heat_flx', farrayPtr2d=dqsfc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_sensi_heat_flx', farrayPtr2d=dtsfc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_net_sw_flx', farrayPtr2d=nswsfc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_pbl_height', farrayPtr2d=hpbl, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_pres_height_surface', farrayPtr2d=psfc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_pres_levels', farrayPtr3d=prsl, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_rainfall_amount', farrayPtr2d=rain, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_soil_moisture_content', farrayPtr3d=smc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_surface_roughness', farrayPtr2d=zorl, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_spec_humid_height2m', farrayPtr2d=q2m, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_temp_height2m', farrayPtr2d=t2m, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_temp_height_surface', farrayPtr2d=tsfc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_temp_levels', farrayPtr3d=temp, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_tracer_mass_frac', farrayPtr4d=q, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_merid_wind_height10m', farrayPtr2d=u10m, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_zonal_wind_height10m', farrayPtr2d=v10m, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_vegetation_area_frac', farrayPtr2d=vfrac, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'leaf_area_index', farrayPtr2d=xlai, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'sea_ice_area_fraction', farrayPtr2d=fice, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'soil_type', farrayPtr2d=stype, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'surface_cell_area', farrayPtr2d=area, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'surface_snow_area_fraction', farrayPtr2d=sncovr, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'temperature_of_soil_layer', farrayPtr3d=stc, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_merid_wind_levels', farrayPtr3d=ua, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_zonal_wind_levels', farrayPtr3d=va, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      !--- handle all three-dimensional variables
+!$OMP parallel do default (none) &
+!$OMP             shared  (nk, nj, ni, Atm_block, IPD_Data, phii, prsl, phil, temp, ua, va, cldf)  &
+!$OMP             private (k, j, jb, i, ib, nb, ix)
+      do k = 1, nk
+        do j = 1, nj
+          jb = j + Atm_block%jsc - 1
+          do i = 1, ni
+            ib = i + Atm_block%isc - 1
+            nb = Atm_block%blkno(ib,jb)
+            ix = Atm_block%ixp(ib,jb)
+            !--- interface values
+            phii(i,j,k) = IPD_Data(nb)%Statein%phii(ix,k)
+            !--- layer values
+            prsl(i,j,k) = IPD_Data(nb)%Statein%prsl(ix,k)
+            phil(i,j,k) = IPD_Data(nb)%Statein%phil(ix,k)
+            temp(i,j,k) = IPD_Data(nb)%Stateout%gt0(ix,k)
+            ua  (i,j,k) = IPD_Data(nb)%Stateout%gu0(ix,k)
+            va  (i,j,k) = IPD_Data(nb)%Stateout%gv0(ix,k)
+            cldf(i,j,k) = IPD_Data(nb)%Coupling%cldcov(ix,k)
+          enddo
+        enddo
+      enddo
+
+      !--- top interface values
+      k = nk+1
+!$omp parallel do default(shared) private(i,j,jb,ib,nb,ix)
+      do j = 1, nj
+        jb = j + Atm_block%jsc - 1
+        do i = 1, ni
+          ib = i + Atm_block%isc - 1
+          nb = Atm_block%blkno(ib,jb)
+          ix = Atm_block%ixp(ib,jb)
+          phii(i,j,k) = IPD_Data(nb)%Statein%phii(ix,k)
+        enddo
+      enddo
+
+      !--- tracers quantities
+      do it = 1, nt
+!$OMP parallel do default (none) &
+!$OMP             shared  (it, nk, nj, ni, Atm_block, IPD_Data, q)  &
+!$OMP             private (k, j, jb, i, ib, nb, ix)
+        do k = 1, nk
+          do j = 1, nj
+            jb = j + Atm_block%jsc - 1
+            do i = 1, ni
+              ib = i + Atm_block%isc - 1
+              nb = Atm_block%blkno(ib,jb)
+              ix = Atm_block%ixp(ib,jb)
+              q(i,j,k,it) = IPD_Data(nb)%Stateout%gq0(ix,k,it)
+            enddo
+          enddo
+        enddo
+      enddo
+
+!$OMP parallel do default (none) &
+!$OMP             shared  (nj, ni, Atm_block, IPD_Data, IPD_Control, &
+!$OMP                      canopy, oro, cmm, rca, rainc, rain, uustar, slmsk, &
+!$OMP                      stype, area, hpbl, dqsfc, dtsfc, nswsfc, psfc, smc, &
+!$OMP                      zorl, q2m, t2m, tsfc, u10m, v10m, vfrac, xlai, fice, stc, sncovr) &
+!$OMP             private (j, jb, i, ib, nb, ix)
+      do j = 1, nj
+        jb = j + Atm_block%jsc - 1
+        do i = 1, ni
+          ib = i + Atm_block%isc - 1
+          nb = Atm_block%blkno(ib,jb)
+          ix = Atm_block%ixp(ib,jb)
+          canopy(i,j) = IPD_Data(nb)%Sfcprop%canopy(ix)
+          oro(i,j)    = IPD_Data(nb)%Sfcprop%oro(ix)
+          cmm(i,j)    = IPD_Data(nb)%IntDiag%cmm(ix)
+          rca(i,j)    = IPD_Data(nb)%Coupling%rca(ix)
+          rainc(i,j)  = IPD_Data(nb)%Coupling%rainc_cpl(ix)
+          rain(i,j)   = IPD_Data(nb)%Coupling%rain_cpl(ix) &
+                      + IPD_Data(nb)%Coupling%snow_cpl(ix)
+          uustar(i,j) = IPD_Data(nb)%Sfcprop%uustar(ix)
+          slmsk(i,j)  = IPD_Data(nb)%Sfcprop%slmsk(ix)
+          if (nint(slmsk(i,j)) == 2) then
+            if (IPD_Control%isot == 1) then
+              stype(i,j) = 16._ESMF_KIND_R8
+            else
+              stype(i,j) = 9._ESMF_KIND_R8
+            endif
+          else
+            stype(i,j) = real(int( IPD_Data(nb)%Sfcprop%stype(ix)+0.5 ), kind=ESMF_KIND_R8)
+          endif
+          area(i,j)   = IPD_Data(nb)%Grid%area(ix)
+          hpbl(i,j)   = IPD_Data(nb)%IntDiag%hpbl(ix)
+          dqsfc(i,j)  = IPD_Data(nb)%Coupling%dqsfci_cpl(ix)
+          dtsfc(i,j)  = IPD_Data(nb)%Coupling%dtsfci_cpl(ix)
+          nswsfc(i,j) = IPD_Data(nb)%Coupling%nswsfci_cpl(ix)
+          psfc(i,j)   = IPD_Data(nb)%Coupling%psurfi_cpl(ix)
+          zorl(i,j)   = IPD_Data(nb)%Sfcprop%zorl(ix)
+          q2m(i,j)    = IPD_Data(nb)%Coupling%q2mi_cpl(ix)
+          t2m(i,j)    = IPD_Data(nb)%Coupling%t2mi_cpl(ix)
+          tsfc(i,j)   = IPD_Data(nb)%Sfcprop%tsfc(ix)
+          u10m(i,j)   = IPD_Data(nb)%Coupling%u10mi_cpl(ix)
+          v10m(i,j)   = IPD_Data(nb)%Coupling%v10mi_cpl(ix)
+          vfrac(i,j)  = IPD_Data(nb)%Sfcprop%vfrac(ix)
+          xlai(i,j)   = IPD_Data(nb)%Coupling%xlai(ix)
+          fice(i,j)   = IPD_Data(nb)%Sfcprop%fice(ix)
+          smc(i,j,:)  = IPD_Data(nb)%Sfcprop%smc(ix,:)
+          stc(i,j,:)  = IPD_Data(nb)%Sfcprop%stc(ix,:)
+          sncovr(i,j) = IPD_Data(nb)%Sfcprop%sncovr(ix)
+        enddo
+      enddo
+
+      if (IPD_Control%debug) then
+        ! -- diagnostics
+        write(6,'("update_atmos: phii   - min/max/avg",3g16.6)') minval(phii),   maxval(phii),   sum(phii)/size(phii)
+        write(6,'("update_atmos: prsl   - min/max/avg",3g16.6)') minval(prsl),   maxval(prsl),   sum(prsl)/size(prsl)
+        write(6,'("update_atmos: phil   - min/max/avg",3g16.6)') minval(phil),   maxval(phil),   sum(phil)/size(phil)
+        write(6,'("update_atmos: tgrs   - min/max/avg",3g16.6)') minval(temp),   maxval(temp),   sum(temp)/size(temp)
+        write(6,'("update_atmos: ugrs   - min/max/avg",3g16.6)') minval(ua),     maxval(ua),     sum(ua)/size(ua)
+        write(6,'("update_atmos: vgrs   - min/max/avg",3g16.6)') minval(va),     maxval(va),     sum(va)/size(va)
+        write(6,'("update_atmos: cldf   - min/max/avg",3g16.6)') minval(cldf),   maxval(cldf),   sum(cldf)/size(cldf)
+        write(6,'("update_atmos: qgrs   - min/max/avg",3g16.6)') minval(q),      maxval(q),      sum(q)/size(q)
+        write(6,'("update_atmos: canopy - min/max/avg",3g16.6)') minval(canopy), maxval(canopy), sum(canopy)/size(canopy)
+        write(6,'("update_atmos: oro    - min/max/avg",3g16.6)') minval(oro),    maxval(oro),    sum(oro)/size(oro)
+        write(6,'("update_atmos: cmm    - min/max/avg",3g16.6)') minval(cmm),    maxval(cmm),    sum(cmm)/size(cmm)
+        write(6,'("update_atmos: rca    - min/max/avg",3g16.6)') minval(rca),    maxval(rca),    sum(rca)/size(rca)
+        write(6,'("update_atmos: rainc  - min/max/avg",3g16.6)') minval(rainc),  maxval(rainc),  sum(rainc)/size(rainc)
+        write(6,'("update_atmos: rain   - min/max/avg",3g16.6)') minval(rain),   maxval(rain),   sum(rain)/size(rain)
+        write(6,'("update_atmos: uustar - min/max/avg",3g16.6)') minval(uustar), maxval(uustar), sum(uustar)/size(uustar)
+        write(6,'("update_atmos: slmsk  - min/max/avg",3g16.6)') minval(slmsk),  maxval(slmsk),  sum(slmsk)/size(slmsk)
+        write(6,'("update_atmos: stype  - min/max/avg",3g16.6)') minval(stype),  maxval(stype),  sum(stype)/size(stype)
+        write(6,'("update_atmos: area   - min/max/avg",3g16.6)') minval(area),   maxval(area),   sum(area)/size(area)
+        write(6,'("update_atmos: hpbl   - min/max/avg",3g16.6)') minval(hpbl),   maxval(hpbl),   sum(hpbl)/size(hpbl)
+        write(6,'("update_atmos: dqsfc  - min/max/avg",3g16.6)') minval(dqsfc),  maxval(dqsfc),  sum(dqsfc)/size(dqsfc)
+        write(6,'("update_atmos: dtsfc  - min/max/avg",3g16.6)') minval(dtsfc),  maxval(dtsfc),  sum(dtsfc)/size(dtsfc)
+        write(6,'("update_atmos: nswsfc - min/max/avg",3g16.6)') minval(nswsfc), maxval(nswsfc), sum(nswsfc)/size(nswsfc)
+        write(6,'("update_atmos: psfc   - min/max/avg",3g16.6)') minval(psfc),   maxval(psfc),   sum(psfc)/size(psfc)
+        write(6,'("update_atmos: smc    - min/max/avg",3g16.6)') minval(smc),    maxval(smc),    sum(smc)/size(smc)
+        write(6,'("update_atmos: stc    - min/max/avg",3g16.6)') minval(stc),    maxval(stc),    sum(stc)/size(stc)
+        write(6,'("update_atmos: zorl   - min/max/avg",3g16.6)') minval(zorl),   maxval(zorl),   sum(zorl)/size(zorl)
+        write(6,'("update_atmos: q2m    - min/max/avg",3g16.6)') minval(q2m),    maxval(q2m),    sum(q2m)/size(q2m)
+        write(6,'("update_atmos: t2m    - min/max/avg",3g16.6)') minval(t2m),    maxval(t2m),    sum(t2m)/size(t2m)
+        write(6,'("update_atmos: tsfc   - min/max/avg",3g16.6)') minval(tsfc),   maxval(tsfc),   sum(tsfc)/size(tsfc)
+        write(6,'("update_atmos: u10m   - min/max/avg",3g16.6)') minval(u10m),   maxval(u10m),   sum(u10m)/size(u10m)
+        write(6,'("update_atmos: v10m   - min/max/avg",3g16.6)') minval(v10m),   maxval(v10m),   sum(v10m)/size(v10m)
+        write(6,'("update_atmos: vfrac  - min/max/avg",3g16.6)') minval(vfrac),  maxval(vfrac),  sum(vfrac)/size(vfrac)
+        write(6,'("update_atmos: xlai   - min/max/avg",3g16.6)') minval(xlai),   maxval(xlai),   sum(xlai)/size(xlai)
+        write(6,'("update_atmos: fice   - min/max/avg",3g16.6)') minval(fice),   maxval(fice),   sum(fice)/size(fice)
+        write(6,'("update_atmos: sncovr - min/max/avg",3g16.6)') minval(sncovr), maxval(sncovr), sum(sncovr)/size(sncovr)
+      end if
+
+    case default
+      ! -- do nothing
+  end select
+
+end subroutine update_atmos_aqm
 ! </SUBROUTINE>
 
 !#######################################################################

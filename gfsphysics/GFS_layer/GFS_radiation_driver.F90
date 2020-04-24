@@ -1787,6 +1787,14 @@
 !                           clouds, cldsa, mtopa, mbota, de_lgth)         !  ---  outputs
           endif 
 
+          if (Model%cplaqm) then
+            do k = 1, LM
+              do i = 1, IM
+                Coupling%cldcov(i,k) = cldcov(i,k)
+              enddo
+            enddo
+          endif
+
         elseif(Model%imp_physics == 8 .or. Model%imp_physics == 6) then   ! Thompson / WSM6 cloud micrphysics scheme 
 
           if (Model%kdt == 1) then

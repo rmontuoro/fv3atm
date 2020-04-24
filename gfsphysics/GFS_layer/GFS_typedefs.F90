@@ -520,6 +520,11 @@ module GFS_typedefs
     real (kind=kind_phys), pointer :: ushfsfci(:)     => null()  !< instantaneous upward sensible heat flux (w/m**2)
     real (kind=kind_phys), pointer :: dkt     (:,:)   => null()  !< instantaneous dkt diffusion coefficient for temperature (m**2/s)
 
+    !--- instantaneous quantities for AQM coupling
+    real (kind=kind_phys), pointer :: xlai    (:)     => null()  !< instantaneous leaf area index
+    real (kind=kind_phys), pointer :: rca     (:)     => null()  !< instantaneous canopy resistance
+    real (kind=kind_phys), pointer :: cldcov  (:,:)   => null()  !< instantaneous 3d cloud fraction
+
     contains
       procedure :: create  => coupling_create  !<   allocate array data
   end type GFS_coupling_type
@@ -587,6 +592,7 @@ module GFS_typedefs
     logical              :: cplwav          !< default no cplwav collection
     logical              :: cplwav2atm      !< default no wav->atm coupling
     logical              :: cplchm          !< default no cplchm collection
+    logical              :: cplaqm          !< default no cplaqm collection
 
 !--- integrated dynamics through earth's atmosphere
     logical              :: lsidea
@@ -2520,14 +2526,14 @@ module GFS_typedefs
     Coupling%sfcnsw = clear_val
     Coupling%sfcdlw = clear_val
 
-    if (Model%cplflx .or. Model%do_sppt .or. Model%cplchm) then
+    if (Model%cplflx .or. Model%do_sppt .or. Model%cplchm .or. Model%cplaqm) then
       allocate (Coupling%rain_cpl (IM))
       allocate (Coupling%snow_cpl (IM))
       Coupling%rain_cpl = clear_val
       Coupling%snow_cpl = clear_val
     endif
 
-    if (Model%cplflx .or. Model%cplwav) then
+    if (Model%cplflx .or. Model%cplwav .or. Model%cplaqm) then
       !--- instantaneous quantities 
       allocate (Coupling%u10mi_cpl (IM))
       allocate (Coupling%v10mi_cpl (IM))
@@ -2543,7 +2549,7 @@ module GFS_typedefs
       Coupling%zorlwav_cpl  = clear_val
     end if
 
-    if (Model%cplflx) then
+    if (Model%cplflx .or. Model%cplaqm) then
       !--- incoming quantities
       allocate (Coupling%slimskin_cpl (IM))
       allocate (Coupling%dusfcin_cpl  (IM))
@@ -2684,13 +2690,27 @@ module GFS_typedefs
       allocate (Coupling%ushfsfci  (IM))
       allocate (Coupling%dkt       (IM,Model%levs))
       allocate (Coupling%dqdti     (IM,Model%levs))
-      !--- accumulated convective rainfall
-      allocate (Coupling%rainc_cpl (IM))
 
-      Coupling%rainc_cpl = clear_val
       Coupling%ushfsfci  = clear_val
       Coupling%dkt       = clear_val
       Coupling%dqdti     = clear_val
+    endif
+
+    ! -- AQM coupling options
+    if (Model%cplaqm) then
+      allocate (Coupling%xlai      (IM))
+      allocate (Coupling%rca       (IM))
+      allocate (Coupling%cldcov    (IM,Model%levr))
+
+      Coupling%xlai      = clear_val
+      Coupling%rca       = clear_val
+      Coupling%cldcov    = clear_val
+    endif
+
+    !--- accumulated convective rainfall
+    if (Model%cplchm .or. Model%cplaqm) then
+      allocate (Coupling%rainc_cpl (IM))
+      Coupling%rainc_cpl = clear_val
     endif
 
     !--- stochastic physics option
@@ -2819,6 +2839,7 @@ module GFS_typedefs
     logical              :: cplwav         = .false.         !< default no cplwav collection
     logical              :: cplwav2atm     = .false.         !< default no cplwav2atm coupling
     logical              :: cplchm         = .false.         !< default no cplchm collection
+    logical              :: cplaqm         = .false.         !< default no cplaqm collection
 
 !--- integrated dynamics through earth's atmosphere
     logical              :: lsidea         = .false.
@@ -3207,7 +3228,7 @@ module GFS_typedefs
     real(kind=kind_phys) :: pertvegf = -999.
 
 !--- aerosol scavenging factors
-    character(len=20) :: fscav_aero(20) = 'default'
+    character(len=20) :: fscav_aero(183) = 'default'
 
 !--- END NAMELIST VARIABLES
 
@@ -3216,7 +3237,7 @@ module GFS_typedefs
                                fhzero, ldiag3d, lssav, fhcyc,                               &
                                thermodyn_id, sfcpress_id,                                   &
                           !--- coupling parameters
-                               cplflx, cplwav, cplwav2atm, cplchm, lsidea,                  &
+                               cplflx, cplwav, cplwav2atm, cplchm, cplaqm, lsidea,          &
                           !--- radiation parameters
                                fhswr, fhlwr, levr, nfxr, iaerclm, iflip, isol, ico2, ialb,  &
                                isot, iems, iaer, icliq_sw, iovr_sw, iovr_lw, ictm, isubc_sw,&
@@ -3411,6 +3432,7 @@ module GFS_typedefs
     Model%cplwav           = cplwav
     Model%cplwav2atm       = cplwav2atm
     Model%cplchm           = cplchm
+    Model%cplaqm           = cplaqm
 
 !--- integrated dynamics through earth's atmosphere
     Model%lsidea           = lsidea
@@ -3843,11 +3865,19 @@ module GFS_typedefs
     Model%ntwa             = get_tracer_index(Model%tracer_names, 'liq_aero',   Model%me, Model%master, Model%debug)
     Model%ntia             = get_tracer_index(Model%tracer_names, 'ice_aero',   Model%me, Model%master, Model%debug)
     Model%ntchm            = 0
-    Model%ntchs            = get_tracer_index(Model%tracer_names, 'so2',        Model%me, Model%master, Model%debug)
+    if (cplchm) then
+      Model%ntchs          = get_tracer_index(Model%tracer_names, 'so2', Model%me, Model%master, Model%debug)
+    else if (cplaqm) then
+      Model%ntchs          = get_tracer_index(Model%tracer_names, 'no2', Model%me, Model%master, Model%debug)
+    endif
     if (Model%ntchs > 0) then
-      Model%ntchm          = get_tracer_index(Model%tracer_names, 'pp10',       Model%me, Model%master, Model%debug)
-      if (Model%ntchm > 0) then
-        Model%ntchm = Model%ntchm - Model%ntchs + 1
+      if (cplchm) then
+        Model%ntchm        = get_tracer_index(Model%tracer_names, 'pp10', Model%me, Model%master, Model%debug)
+      else if (cplaqm) then
+        Model%ntchm        = get_tracer_index(Model%tracer_names, 'lv_pcsog', Model%me, Model%master, Model%debug)
+      endif
+      if (Model%ntchm > 0) Model%ntchm = Model%ntchm - Model%ntchs + 1
+      if (Model%cplchm .and. (Model%ntchm > 0)) then
         allocate(Model%ntdiag(Model%ntchm))
         ! -- turn on all tracer diagnostics to .true. by default, except for so2
         Model%ntdiag(1)  = .false.
@@ -3865,18 +3895,23 @@ module GFS_typedefs
     allocate(Model%fscav(Model%ntchm))
     if (Model%ntchm > 0) then
       ! -- initialize to default
-      Model%fscav = 0.6_kind_phys
-      n = get_tracer_index(Model%tracer_names, 'seas1', Model%me, Model%master, Model%debug) - Model%ntchs + 1
-      if (n > 0) Model%fscav(n) = 1.0_kind_phys
-      n = get_tracer_index(Model%tracer_names, 'seas2', Model%me, Model%master, Model%debug) - Model%ntchs + 1
-      if (n > 0) Model%fscav(n) = 1.0_kind_phys
-      n = get_tracer_index(Model%tracer_names, 'seas3', Model%me, Model%master, Model%debug) - Model%ntchs + 1
-      if (n > 0) Model%fscav(n) = 1.0_kind_phys
-      n = get_tracer_index(Model%tracer_names, 'seas4', Model%me, Model%master, Model%debug) - Model%ntchs + 1
-      if (n > 0) Model%fscav(n) = 1.0_kind_phys
-      n = get_tracer_index(Model%tracer_names, 'seas5', Model%me, Model%master, Model%debug) - Model%ntchs + 1
-      if (n > 0) Model%fscav(n) = 1.0_kind_phys
+      if (cplchm) then
+        Model%fscav = 0.6_kind_phys
+        n = get_tracer_index(Model%tracer_names, 'seas1', Model%me, Model%master, Model%debug) - Model%ntchs + 1
+        if (n > 0) Model%fscav(n) = 1.0_kind_phys
+        n = get_tracer_index(Model%tracer_names, 'seas2', Model%me, Model%master, Model%debug) - Model%ntchs + 1
+        if (n > 0) Model%fscav(n) = 1.0_kind_phys
+        n = get_tracer_index(Model%tracer_names, 'seas3', Model%me, Model%master, Model%debug) - Model%ntchs + 1
+        if (n > 0) Model%fscav(n) = 1.0_kind_phys
+        n = get_tracer_index(Model%tracer_names, 'seas4', Model%me, Model%master, Model%debug) - Model%ntchs + 1
+        if (n > 0) Model%fscav(n) = 1.0_kind_phys
+        n = get_tracer_index(Model%tracer_names, 'seas5', Model%me, Model%master, Model%debug) - Model%ntchs + 1
+        if (n > 0) Model%fscav(n) = 1.0_kind_phys
+      else if (cplaqm) then
+        Model%fscav = 0.2_kind_phys
+      end if
       ! -- read factors from namelist
+      ! -- set default first, if available
       do i = 1, size(fscav_aero)
         j = index(fscav_aero(i),":")
         if (j > 1) then
@@ -3885,11 +3920,18 @@ module GFS_typedefs
           if (adjustl(fscav_aero(i)(:j-1)) == "*") then
             Model%fscav = tem
             exit
-          else
-            n = get_tracer_index(Model%tracer_names, adjustl(fscav_aero(i)(:j-1)), Model%me, Model%master, Model%debug) &
-                - Model%ntchs + 1
-            if (n > 0) Model%fscav(n) = tem
           endif
+        endif
+      enddo
+      ! -- then read factors for each tracer
+      do i = 1, size(fscav_aero)
+        j = index(fscav_aero(i),":")
+        if (j > 1) then
+          read(fscav_aero(i)(j+1:), *, iostat=ios) tem
+          if (ios /= 0) cycle
+          n = get_tracer_index(Model%tracer_names, adjustl(fscav_aero(i)(:j-1)), Model%me, Model%master, Model%debug) &
+              - Model%ntchs + 1
+          if (n > 0) Model%fscav(n) = tem
         endif
       enddo
     endif
@@ -4559,6 +4601,7 @@ module GFS_typedefs
       print *, ' cplwav            : ', Model%cplwav
       print *, ' cplwav2atm        : ', Model%cplwav2atm
       print *, ' cplchm            : ', Model%cplchm
+      print *, ' cplaqm            : ', Model%cplaqm
       print *, ' '
       print *, 'integrated dynamics through earth atmosphere'
       print *, ' lsidea            : ', Model%lsidea
@@ -6263,7 +6306,7 @@ module GFS_typedefs
     Interstitial%nscav            = Model%ntrac-Model%ncld+2
 
     ! perform aerosol convective transport and PBL diffusion
-    Interstitial%trans_aero = Model%cplchm .and. Model%trans_trac
+    Interstitial%trans_aero = (Model%cplchm .or. Model%cplaqm) .and.  Model%trans_trac
 
     if (Model%imp_physics == Model%imp_physics_thompson) then
       if (Model%ltaerosol) then

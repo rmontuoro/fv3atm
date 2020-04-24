@@ -569,7 +569,7 @@ module module_physics_driver
 
 !  mg, sfc perts
       real (kind=kind_phys), dimension(size(Grid%xlon,1)) :: &
-         z01d, zt1d, bexp1d, xlai1d, alb1d, vegf1d
+         z01d, zt1d, bexp1d, xlai1d, alb1d, vegf1d, xlai, rca
       real(kind=kind_phys) :: cdfz
 !--- ALLOCATABLE ELEMENTS
       !--- in clw, the first two varaibles are cloud water and ice.
@@ -737,7 +737,7 @@ module module_physics_driver
       nncl = ncld
 
       ! perform aerosol convective transport and PBL diffusion
-      trans_aero = Model%cplchm .and. Model%trans_trac
+      trans_aero = (Model%cplchm .or. Model%cplaqm) .and. Model%trans_trac
 
       if (imp_physics == Model%imp_physics_thompson) then
         if (Model%ltaerosol) then
@@ -774,7 +774,7 @@ module module_physics_driver
         endif
       endif
 !
-      if (Model%cplchm) then
+      if (Model%cplchm .or. Model%cplaqm) then
         ! Only Zhao/Carr/Sundqvist and GFDL microphysics schemes are supported
         ! when coupling with chemistry. PBL diffusion of aerosols is only  supported
         ! Adding MG microphysics - Moorthi
@@ -899,6 +899,8 @@ module module_physics_driver
          xlai1d(i) = zero
 !        alb1d(i)  = zero
          vegf1d(i) = zero
+         xlai(i)   = zero
+         rca(i)    = zero
       enddo
       if (Model%do_sfcperts) then
         if (Model%pertz0(1) > zero) then
@@ -1809,7 +1811,7 @@ module module_physics_driver
             Sfcprop%sncovr, qss3(:,1), gflx3(:,1), drain, evap3(:,1),    &
             hflx3(:,1), ep1d3(:,1), runof,                               &
             cmm3(:,1),  chh3(:,1), evbs, evcw, sbsno, snowc, Diag%soilm, &
-            snohf, Diag%smcwlt2, Diag%smcref2, Diag%wet1)
+            snohf, Diag%smcwlt2, Diag%smcref2, Diag%wet1, xlai, rca)
 !*## CCPP ##
 
 !     if (lprnt) write(0,*)' tseae=',tseal(ipr),' tsurf=',tsurf(ipr),iter&
@@ -2165,14 +2167,14 @@ module module_physics_driver
       endif ! if (Model%lsm == Model%lsm_noahmp)
 ! *DH
 
-      if (Model%cplflx .or. Model%cplwav) then
+      if (Model%cplflx .or. Model%cplwav .or. Model%cplaqm) then
         do i=1,im
           Coupling%u10mi_cpl   (i) = Diag%u10m(i)
           Coupling%v10mi_cpl   (i) = Diag%v10m(i)
         enddo
       endif
 
-      if (Model%cplflx) then
+      if (Model%cplflx .or. Model%cplaqm) then
         do i=1,im
           Coupling%dlwsfci_cpl (i) = adjsfcdlw(i)
           Coupling%dswsfci_cpl (i) = adjsfcdsw(i)
@@ -2817,7 +2819,7 @@ module module_physics_driver
 
 !  --- ...  coupling insertion
 
-      if (Model%cplflx) then
+      if (Model%cplflx .or. Model%cplaqm) then
         do i=1,im
           if (Sfcprop%oceanfrac(i) > zero) then               ! Ocean only, NO LAKES
             if (Sfcprop%fice(i) > one - epsln) then ! no open water, thus use results from CICE
@@ -5441,7 +5443,7 @@ module module_physics_driver
 
 !  --- ...  coupling insertion
 
-      if (Model%cplflx .or. Model%cplchm) then
+      if (Model%cplflx .or. Model%cplchm .or. Model%cplaqm) then
         do i = 1, im
           Tbd%drain_cpl(i)= Diag%rain(i) * (one-Sfcprop%srflag(i))
           Tbd%dsnow_cpl(i)= Diag%rain(i) * Sfcprop%srflag(i)
@@ -5450,9 +5452,16 @@ module module_physics_driver
         enddo
       endif
 
-      if (Model%cplchm) then
+      if (Model%cplchm .or. Model%cplaqm) then
         do i = 1, im
           Coupling%rainc_cpl(i) = Coupling%rainc_cpl(i) + Diag%rainc(i)
+        enddo
+      endif
+
+      if (Model%cplaqm) then
+        do i = 1, im
+          Coupling%rca(i)  = rca(i)
+          Coupling%xlai(i) = xlai(i)
         enddo
       endif
 !*## CCPP ##

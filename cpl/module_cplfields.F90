@@ -13,7 +13,7 @@ module module_cplfields
   private
 
 ! Export Fields ----------------------------------------
-  integer,          public, parameter :: NexportFields = 71
+  integer,          public, parameter :: NexportFields = 80
   type(ESMF_Field), target, public    :: exportFields(NexportFields)
   character(len=*), public, parameter :: exportFieldsList(NexportFields) = (/ &
        "inst_pres_interface                      ", &
@@ -86,7 +86,15 @@ module module_cplfields
        "inst_merid_wind_height_lowest            ", &
        "inst_pres_height_lowest                  ", &
        "inst_height_lowest                       ", &
-       "mean_fprec_rate                          "  &
+       "mean_fprec_rate                          ", &
+       "canopy_moisture_storage                  ", &
+       "inst_aerodynamic_conductance             ", &
+       "inst_canopy_resistance                   ", &
+       "inst_cloud_frac_levels                   ", &
+       "leaf_area_index                          ", &
+       "sea_ice_area_fraction                    ", &
+       "surface_snow_area_fraction               ", &
+       "temperature_of_soil_layer                ", &
 !      "northward_wind_neutral                   ", &
 !      "eastward_wind_neutral                    ", &
 !      "upward_wind_neutral                      ", &
@@ -94,7 +102,7 @@ module module_cplfields
 !      "O_Density                                ", &
 !      "O2_Density                               ", &
 !      "N2_Density                               ", &
-!      "height                                   "  &
+       "height                                   "  &
   /)
   ! Field types should be provided for proper handling
   ! according to the table below:
@@ -112,30 +120,14 @@ module module_cplfields
        "s","s","s","s","s","s","s","s",     &
        "s","s","s","s","s","s","s","s",     &
        "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s"                  &
+       "s","s","s","s","s","s","s","s",     &
+       "l","s","s","s","g","s"              &
 !      "l","l","l","l","l","l","l","s",     &
   /)
   ! Set exportFieldShare to .true. if field is provided as memory reference
-  ! to coupled components
-  logical, public, parameter :: exportFieldShare(NexportFields) = (/ &
-       .true. ,.true. ,.true. ,.true. ,.true. , &
-       .true. ,.true. ,.true. ,.true. ,.true. , &
-       .true. ,.true. ,.true. ,.true. ,.true. , &
-       .true. ,.true. ,.true. ,.true. ,.true. , &
-       .true. ,.true. ,.true. ,.false.,.false., &
-       .false.,.false.,.false.,.false.,.false., &
-       .false.,.false.,.false.,.false.,.false. , &
-       .true. ,.false.,.false.,.false.,.false. , &
-       .true. ,.false.,.false.,.false.,.false., &
-       .false.,.false.,.false.,.false.,.false., &
-       .false.,.false.,.false.,.false.,.false., &
-       .false.,.false.,.false.,.false.,.false., &
-       .false.,.false.,.false.,.true. ,.false., &
-       .false.,.false.,.false.,.false.,.false., &
-       .false.                                  &
-!      .false.,.false.,.false.,.false.,.false., &
-!      .false.,.false.,.false.                  &
-  /)
+  ! to coupled components. This is the default behavior.
+  logical, public, parameter :: exportFieldShare(NexportFields) = .true.
+
   real(kind=8), allocatable, public :: exportData(:,:,:)
 
 ! Import Fields ----------------------------------------

@@ -151,7 +151,7 @@
 !  ---  outputs:
      &       sncovr1, qsurf, gflux, drain, evap, hflx, ep, runoff,      &
      &       cmm, chh, evbs, evcw, sbsno, snowc, stm, snohf,            &
-     &       smcwlt2, smcref2, wet1                                     &
+     &       smcwlt2, smcref2, wet1, lai, rca                           &
      &     )
 !
       use machine , only : kind_phys
@@ -207,7 +207,7 @@
       real (kind=kind_phys), dimension(im), intent(out) :: sncovr1,     &
      &       qsurf, gflux, drain, evap, hflx, ep, runoff, cmm, chh,     &
      &       evbs, evcw, sbsno, snowc, stm, snohf, smcwlt2, smcref2,    &
-     &       wet1
+     &       wet1, lai, rca
 
 !  ---  locals:
       real (kind=kind_phys), dimension(im) :: rch, rho,                 &
@@ -509,6 +509,8 @@
 !  ---- ... outside sflx, roughness uses cm as unit (update after snow's
 !  effect)
           zorl(i) = z0*100.
+          lai(i) = xlai
+          rca(i) = rc
 
 !  --- ...  do not return the following output fields to parent model
 !    ec      - canopy water evaporation (m s-1)
