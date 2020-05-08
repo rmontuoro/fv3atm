@@ -5133,7 +5133,7 @@ module GFS_typedefs
     Tbd%acvt = clear_val
 
 
-    if (Model%cplflx .or. Model%cplchm) then
+    if (Model%cplflx .or. Model%cplchm .or. Model%cplaqm) then
       allocate (Tbd%drain_cpl (IM))
       allocate (Tbd%dsnow_cpl (IM))
       Tbd%drain_cpl = clear_val
@@ -6430,7 +6430,7 @@ module GFS_typedefs
     endif
     ! *DH
 
-    if (Model%cplchm) then
+    if (Model%cplchm .or. Model%cplaqm) then
       ! Only Zhao/Carr/Sundqvist and GFDL microphysics schemes are supported
       ! when coupling with chemistry. PBL diffusion of aerosols is only supported
       ! for GFDL microphysics and MG microphysics.
