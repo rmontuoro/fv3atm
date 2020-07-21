@@ -3663,6 +3663,24 @@ module GFS_diagnostics
 
   endif
 
+! -- air quality diagnostic variables
+  if (Model%cplaqm) then
+
+    if (associated(IntDiag(1)%aod)) then
+      idx = idx + 1
+      ExtDiag(idx)%axes = 2
+      ExtDiag(idx)%name = 'aod'
+      ExtDiag(idx)%desc = 'Aerosol Optical Depth'
+      ExtDiag(idx)%unit = 'n/a'
+      ExtDiag(idx)%mod_name = 'gfs_phys'
+      allocate (ExtDiag(idx)%data(nblks))
+      do nb = 1,nblks
+        ExtDiag(idx)%data(nb)%var2 => IntDiag(nb)%aod
+      enddo
+    endif
+
+  endif
+
 !--- prognostic variable tendencies (t, u, v, sph, clwmr, o3)
 !rab    idx = idx + 1
 !rab    ExtDiag(idx)%axes = 3

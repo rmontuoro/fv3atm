@@ -1611,11 +1611,15 @@ module GFS_typedefs
                                                                !< for black carbon, organic carbon, and sulfur dioxide         ( ug/m**2/s )
     real (kind=kind_phys), pointer :: aecm  (:,:) => null()    !< instantaneous aerosol column mass densities for
                                                                !< pm2.5, black carbon, organic carbon, sulfate, dust, sea salt ( g/m**2 )
+    !--- Output diagnostics for coupled air quality
+    real (kind=kind_phys), pointer :: aod   (:)   => null()    !< instantaneous aerosol optical depth                          ( n/a )
+
     contains
       procedure :: create    => diag_create
       procedure :: rad_zero  => diag_rad_zero
       procedure :: phys_zero => diag_phys_zero
       procedure :: chem_init => diag_chem_init
+      procedure :: aqm_init  => diag_aqm_init
   end type GFS_diag_type
 
 #ifdef CCPP
@@ -5606,6 +5610,9 @@ module GFS_typedefs
     !--- diagnostics for coupled chemistry
     if (Model%cplchm) call Diag%chem_init(IM,Model)
 
+    !--- diagnostics for coupled air quality
+    if (Model%cplaqm) call Diag%aqm_init(IM,Model)
+
     call Diag%rad_zero  (Model)
 !    if(Model%me==0) print *,'in diag_create, call rad_zero'
     linit = .true.
@@ -5946,6 +5953,18 @@ module GFS_typedefs
     end function get_number_bins
 
   end subroutine diag_chem_init
+
+  subroutine diag_aqm_init(Diag, IM, Model)
+
+    class(GFS_diag_type)               :: Diag
+    integer,                intent(in) :: IM
+    type(GFS_control_type), intent(in) :: Model
+
+    ! -- initialize diagnostic variables
+    allocate (Diag%aod(IM))
+    Diag%aod = zero
+
+  end subroutine diag_aqm_init
 
 #ifdef CCPP
   !-------------------------

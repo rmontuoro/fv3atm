@@ -1574,8 +1574,8 @@ subroutine update_atmos_aqm(state, rc)
                                                      cldf
   real(ESMF_KIND_R8), dimension(:,:,:,:), pointer :: q
 
-  real(ESMF_KIND_R8), dimension(:,:), pointer :: canopy, oro, cmm, rca,  &
-    rainc, rain, uustar, slmsk, stype, area, hpbl, dqsfc, dtsfc, nswsfc, &
+  real(ESMF_KIND_R8), dimension(:,:), pointer :: aod, canopy, oro, cmm,  &
+    rca, rainc, rain, uustar, slmsk, stype, area, hpbl, dqsfc, dtsfc, nswsfc, &
     psfc, zorl, q2m, t2m, tsfc, u10m, v10m, vfrac, xlai, fice, sncovr
 
   ! -- begin
@@ -1595,6 +1595,9 @@ subroutine update_atmos_aqm(state, rc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__, file=__FILE__, rcToReturn=rc)) return
 
+      call cplFieldGet(state,'inst_tracer_diag_aod', farrayPtr2d=aod, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
       !--- do not import tracer concentrations by default
       ntb = nt + 1
       nte = nt
@@ -1625,9 +1628,25 @@ subroutine update_atmos_aqm(state, rc)
         enddo
       enddo
 
+      !--- tracer diagnostics
+!$OMP parallel do default (none) &
+!$OMP             shared  (nj, ni, Atm_block, IPD_Data, aod)  &
+!$OMP             private (j, jb, i, ib, nb, ix)
+      do j = 1, nj
+        jb = j + Atm_block%jsc - 1
+        do i = 1, ni
+          ib = i + Atm_block%isc - 1
+          nb = Atm_block%blkno(ib,jb)
+          ix = Atm_block%ixp(ib,jb)
+          IPD_Data(nb)%IntDiag%aod(ix) = aod(i,j)
+        enddo
+      enddo
+
       if (IPD_Control%debug) then
         write(6,'("update_atmos: ",a,": qgrs - min/max/avg",3g16.6)') &
           trim(state), minval(q), maxval(q), sum(q)/size(q)
+        write(6,'("update_atmos: ",a,": aod  - min/max    ",3g16.6)') &
+          trim(state), minval(aod), maxval(aod)
       end if
 
     case ('export')

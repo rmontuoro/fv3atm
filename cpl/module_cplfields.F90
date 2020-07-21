@@ -131,7 +131,7 @@ module module_cplfields
   real(kind=8), allocatable, public :: exportData(:,:,:)
 
 ! Import Fields ----------------------------------------
-  integer,          public, parameter :: NimportFields = 17
+  integer,          public, parameter :: NimportFields = 18
   logical,          public            :: importFieldsValid(NimportFields)
   type(ESMF_Field), target, public    :: importFields(NimportFields)
   character(len=*), public, parameter :: importFieldsList(NimportFields) = (/ &
@@ -156,6 +156,7 @@ module module_cplfields
        "inst_tracer_down_surface_flx           ", &
        "inst_tracer_clmn_mass_dens             ", &
        "inst_tracer_anth_biom_flx              ", &
+       "inst_tracer_diag_aod                   ", &
        "wave_z0_roughness_length               "  &
   /)
   character(len=*), public, parameter :: importFieldTypes(NimportFields) = (/ &
@@ -163,7 +164,7 @@ module module_cplfields
        "s","s","s","s","s",                 &
        "s","s","s","s","s",                 &
        "s","u","d","c","b",                 &
-       "s"                                  &
+       "s", "s"                             &
   /)
   ! Set importFieldShare to .true. if field is provided as memory reference
   ! from coupled components
@@ -172,7 +173,7 @@ module module_cplfields
        .false.,.false.,.false.,.false.,.false., &
        .false.,.false.,.false.,.false.,.false., &
        .false.,.true. ,.true. ,.true. ,.true. , &
-       .false.                                  &
+       .true. ,.false.                          &
   /)
 
   ! Methods
