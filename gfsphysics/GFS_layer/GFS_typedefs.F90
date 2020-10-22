@@ -1052,8 +1052,9 @@ module GFS_typedefs
     integer              :: nto2            !< tracer index for oxygen
     integer              :: ntwa            !< tracer index for water friendly aerosol
     integer              :: ntia            !< tracer index for ice friendly aerosol
-    integer              :: ntchm           !< number of chemical tracers
+    integer              :: ntchm           !< number of prognostic chemical tracers (advected)
     integer              :: ntchs           !< tracer index for first chemical tracer
+    integer              :: ntche           !< tracer index for last chemical tracer, including diagnostic
     logical, pointer     :: ntdiag(:) => null() !< array to control diagnostics for chemical tracers
     real(kind=kind_phys), pointer :: fscav(:)  => null() !< array of aerosol scavenging coefficients
 
@@ -3929,6 +3930,8 @@ module GFS_typedefs
         Model%ntchm        = get_tracer_index(Model%tracer_names, 'pp10', Model%me, Model%master, Model%debug)
       else if (cplaqm) then
         Model%ntchm        = get_tracer_index(Model%tracer_names, 'lv_pcsog', Model%me, Model%master, Model%debug)
+        Model%ntche        = get_tracer_index(Model%tracer_names, 'pm25co',   Model%me, Model%master, Model%debug)
+        Model%ntche        = max(Model%ntchm, Model%ntche)
       endif
       if (Model%ntchm > 0) Model%ntchm = Model%ntchm - Model%ntchs + 1
       if (Model%cplchm .and. (Model%ntchm > 0)) then
@@ -4952,6 +4955,7 @@ module GFS_typedefs
       print *, ' ntia              : ', Model%ntia
       print *, ' ntchm             : ', Model%ntchm
       print *, ' ntchs             : ', Model%ntchs
+      print *, ' ntche             : ', Model%ntche
       print *, ' fscav             : ', Model%fscav
       print *, ' '
       print *, 'derived totals for phy_f*d'

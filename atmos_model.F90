@@ -1564,7 +1564,7 @@ subroutine update_atmos_aqm(state, rc)
   !--- local variables
   integer :: localrc
   integer :: ni, nj, nk, nt, ntb, nte
-  integer :: nb, ix, i, j, k, it
+  integer :: nb, ix, i, j, k, k1, it
   integer :: ib, jb
 
   real(ESMF_KIND_R8), dimension(:,:,:),   pointer :: prsl, phil, &
@@ -1610,7 +1610,7 @@ subroutine update_atmos_aqm(state, rc)
         end if
       end if
 
-      !--- tracer concentrations
+      !--- prognostic tracer concentrations
       do it = ntb, nte
 !$OMP parallel do default (none) &
 !$OMP             shared  (it, nk, nj, ni, Atm_block, IPD_Data, q)  &
@@ -1628,7 +1628,35 @@ subroutine update_atmos_aqm(state, rc)
         enddo
       enddo
 
-      !--- tracer diagnostics
+      !--- diagnostic tracers
+      !--- set tracer concentrations in the atmospheric state directly
+      !--- since the atmosphere's driver cannot perform this step while
+      !--- updating the state
+      if (IPD_Control%ntche > nte) then
+        ntb = nte + 1
+        nte = IPD_Control%ntche
+!$OMP parallel do default (none) &
+!$OMP             shared  (mytile, nk, ntb, nte, Atm, Atm_block, q) &
+!$OMP             private (i, ib, ix, j, jb, k, k1, nb)
+        do nb = 1, Atm_block%nblks
+          do k = 1, nk
+            if(flip_vc) then
+              k1 = nk+1-k !reverse the k direction
+            else
+              k1 = k
+            endif
+            do ix = 1, Atm_block%blksz(nb)
+              ib = Atm_block%index(nb)%ii(ix)
+              jb = Atm_block%index(nb)%jj(ix)
+              i = ib - Atm_block%isc + 1
+              j = jb - Atm_block%jsc + 1
+              Atm(mytile)%q(ib,jb,k1,ntb:nte) = q(i,j,k,ntb:nte)
+            enddo
+          end do
+        end do
+      end if
+
+      !--- other diagnostics
 !$OMP parallel do default (none) &
 !$OMP             shared  (nj, ni, Atm_block, IPD_Data, aod)  &
 !$OMP             private (j, jb, i, ib, nb, ix)
