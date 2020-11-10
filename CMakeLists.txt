@@ -138,14 +138,14 @@ if(CCPP)
                                                ${CMAKE_CURRENT_BINARY_DIR}/ccpp/driver)
   target_link_libraries(ccppphys PRIVATE sp::sp_d
                                          w3nco::w3nco_d)
-endif()
 
 ###############################################################################
 ### stochastic_physics
 ###############################################################################
 # When specifying an out-of-tree source a binary directory must be explicitly specified.
 #add_subdirectory(../stochastic_physics stochastic_physics)
-add_subdirectory(stochastic_physics)
+  add_subdirectory(stochastic_physics)
+endif()
 
 ###############################################################################
 ### fv3atm
@@ -168,18 +168,16 @@ target_include_directories(fv3atm INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_BI
 if(CCPP)
   list(APPEND _fv3atm_defs_private CCPP)
   target_include_directories(fv3atm PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ccpp/driver/mod)
-  set(CCPP_LIBRARIES ccppdriver ccppphys ccpp)
-  add_dependencies(fv3atm ccppdriver ccppphys ccpp)
-  target_link_libraries(fv3atm PUBLIC ccppdriver ccppphys ccpp)
+  set(CCPP_LIBRARIES ccppdriver ccppphys ccpp stochastic_physics stochastic_physics_wrapper)
+  add_dependencies(fv3atm ${CCPP_LIBRARIES})
+  target_link_libraries(fv3atm PUBLIC ${CCPP_LIBRARIES})
+  target_include_directories(fv3atm PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/stochastic_physics)
 endif()
-target_include_directories(fv3atm PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/stochastic_physics)
 target_compile_definitions(fv3atm PRIVATE "${_fv3atm_defs_private}")
 
 target_link_libraries(fv3atm PUBLIC fv3dycore
                                     cpl
-                                    io
-                                    stochastic_physics
-                                    stochastic_physics_wrapper)
+                                    io)
 
 target_link_libraries(fv3atm PUBLIC nemsio::nemsio
                                     w3emc::w3emc_d
@@ -200,7 +198,7 @@ endif()
 ### Install
 ###############################################################################
 install(
-  TARGETS fv3atm fv3dycore io ipd gfsphysics ${CCPP_LIBRARIES} cpl stochastic_physics stochastic_physics_wrapper
+  TARGETS fv3atm fv3dycore io ipd gfsphysics ${CCPP_LIBRARIES} cpl
   EXPORT fv3atm-config
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
