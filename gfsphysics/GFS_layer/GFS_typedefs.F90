@@ -4652,24 +4652,28 @@ module GFS_typedefs
     Model%nreffr   = -999
     Model%nseffr   = -999
     Model%ngeffr   = -999
+#ifdef CCPP
     Model%nT2delt  = -999
     Model%nTdelt   = -999
     Model%nqv2delt = -999
     Model%nqvdelt  = -999
     Model%nps2delt = -999
     Model%npsdelt  = -999
+#endif
     if (Model%imp_physics == Model%imp_physics_zhao_carr) then
       Model%npdf3d   = 0
       Model%num_p3d  = 4
       Model%num_p2d  = 3
       Model%shcnvcw  = .false.
       Model%ncnd     = 1                   ! ncnd is the number of cloud condensate types
+#ifdef CCPP
       Model%nT2delt  = 1
       Model%nqv2delt = 2
       Model%nTdelt   = 3
       Model%nqvdelt  = 4
       Model%nps2delt = 1
       Model%npsdelt  = 2
+#endif
       if (Model%me == Model%master) print *,' Using Zhao/Carr/Sundqvist Microphysics'
 
     elseif (Model%imp_physics == Model%imp_physics_zhao_carr_pdf) then !Zhao Microphysics with PDF cloud
