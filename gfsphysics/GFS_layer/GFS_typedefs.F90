@@ -609,6 +609,7 @@ module GFS_typedefs
     logical              :: cplwav          !< default no cplwav collection
     logical              :: cplwav2atm      !< default no wav->atm coupling
     logical              :: cplchm          !< default no cplchm collection
+    logical              :: cplgocart       !< default no cplgocart collection
 
 !--- integrated dynamics through earth's atmosphere
     logical              :: lsidea
@@ -3001,6 +3002,7 @@ module GFS_typedefs
     logical              :: cplwav         = .false.         !< default no cplwav collection
     logical              :: cplwav2atm     = .false.         !< default no cplwav2atm coupling
     logical              :: cplchm         = .false.         !< default no cplchm collection
+    logical              :: cplgocart      = .false.         !< default no cplgocart collection
 
 !--- integrated dynamics through earth's atmosphere
     logical              :: lsidea         = .false.
@@ -3434,7 +3436,7 @@ module GFS_typedefs
                                aux2d_time_avg, aux3d_time_avg, fhcyc,                       &
                                thermodyn_id, sfcpress_id,                                   &
                           !--- coupling parameters
-                               cplflx, cplwav, cplwav2atm, cplchm, lsidea,                  &
+                               cplflx, cplwav, cplwav2atm, cplchm, cplgocart, lsidea,       &
                           !--- radiation parameters
                                fhswr, fhlwr, levr, nfxr, iaerclm, iflip, isol, ico2, ialb,  &
                                isot, iems, iaer, icliq_sw, iovr_sw, iovr_lw, ictm, isubc_sw,&
@@ -3723,10 +3725,15 @@ module GFS_typedefs
 #endif
 
 !--- coupling parameters
+    if (cplgocart) then
+      cplchm = .true.
+      cplflx = .true.
+    end if
     Model%cplflx           = cplflx
     Model%cplwav           = cplwav
     Model%cplwav2atm       = cplwav2atm
     Model%cplchm           = cplchm
+    Model%cplgocart        = cplgocart
 
 !--- integrated dynamics through earth's atmosphere
     Model%lsidea           = lsidea

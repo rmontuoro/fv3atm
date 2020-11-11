@@ -1109,7 +1109,8 @@ subroutine update_atmos_chemistry(state, rc)
   real(ESMF_KIND_R8), dimension(:,:,:,:), pointer :: qd, q
 
   real(ESMF_KIND_R8), dimension(:,:), pointer :: hpbl, area, stype, rainc, &
-    uustar, rain, sfcdsw, slmsk, tsfc, shfsfc, snowd, vtype, vfrac, zorl
+    uustar, rain, sfcdsw, slmsk, tsfc, shfsfc, snowd, vtype, vfrac, zorl,  &
+    dtsfc, focn, flake, fice, u10m, v10m
 
 ! logical, parameter :: diag = .true.
 
@@ -1387,9 +1388,36 @@ subroutine update_atmos_chemistry(state, rc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__, file=__FILE__, rcToReturn=rc)) return
 
+      if (IPD_Control%cplgocart) then
+        call cplFieldGet(state,'inst_zonal_wind_height10m', farrayPtr2d=u10m, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+        call cplFieldGet(state,'inst_merid_wind_height10m', farrayPtr2d=v10m, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+        call cplFieldGet(state,'inst_sensi_heat_flx', farrayPtr2d=dtsfc, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+        call cplFieldGet(state,'ice_fraction', farrayPtr2d=fice, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+        call cplFieldGet(state,'lake_fraction', farrayPtr2d=flake, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+        call cplFieldGet(state,'ocean_fraction', farrayPtr2d=focn, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+      end if
+
       !--- handle all three-dimensional variables
 !$OMP parallel do default (none) &
-!$OMP             shared  (nk, nj, ni, Atm_block, IPD_Data, prsi, phii, prsl, phil, temp, ua, va, vvl, dkt, dqdt)  &
+!$OMP             shared  (nk, nj, ni, Atm_block, IPD_Data, IPD_Control, &
+!$OMP                      prsi, phii, prsl, phil, temp, ua, va, vvl, dkt, dqdt)  &
 !$OMP             private (k, j, jb, i, ib, nb, ix)
       do k = 1, nk
         do j = 1, nj
@@ -1407,9 +1435,11 @@ subroutine update_atmos_chemistry(state, rc)
             temp(i,j,k) = IPD_Data(nb)%Stateout%gt0(ix,k)
             ua  (i,j,k) = IPD_Data(nb)%Stateout%gu0(ix,k)
             va  (i,j,k) = IPD_Data(nb)%Stateout%gv0(ix,k)
-            vvl (i,j,k) = IPD_Data(nb)%Statein%vvl (ix,k)
-            dkt (i,j,k) = IPD_Data(nb)%Coupling%dkt(ix,k)
-            dqdt(i,j,k) = IPD_Data(nb)%Coupling%dqdti(ix,k)
+            if (.not.IPD_Control%cplgocart) then
+              vvl (i,j,k) = IPD_Data(nb)%Statein%vvl (ix,k)
+              dkt (i,j,k) = IPD_Data(nb)%Coupling%dkt(ix,k)
+              dqdt(i,j,k) = IPD_Data(nb)%Coupling%dqdti(ix,k)
+            end if
           enddo
         enddo
       enddo
@@ -1447,8 +1477,9 @@ subroutine update_atmos_chemistry(state, rc)
       enddo
 
 !$OMP parallel do default (none) &
-!$OMP             shared  (nj, ni, Atm_block, IPD_Data, &
+!$OMP             shared  (nj, ni, Atm_block, IPD_Data, IPD_Control, &
 !$OMP                      hpbl, area, stype, rainc, rain, uustar, sfcdsw, &
+!$OMP                      dtsfc, fice, flake, focn, u10m, v10m, &
 !$OMP                      slmsk, snowd, tsfc, shfsfc, vtype, vfrac, zorl, slc) &
 !$OMP             private (j, jb, i, ib, nb, ix)
       do j = 1, nj
@@ -1459,20 +1490,29 @@ subroutine update_atmos_chemistry(state, rc)
           ix = Atm_block%ixp(ib,jb)
           hpbl(i,j)   = IPD_Data(nb)%Tbd%hpbl(ix)
           area(i,j)   = IPD_Data(nb)%Grid%area(ix)
-          stype(i,j)  = IPD_Data(nb)%Sfcprop%stype(ix)
           rainc(i,j)  = IPD_Data(nb)%Coupling%rainc_cpl(ix)
           rain(i,j)   = IPD_Data(nb)%Coupling%rain_cpl(ix)  &
                       + IPD_Data(nb)%Coupling%snow_cpl(ix)
           uustar(i,j) = IPD_Data(nb)%Sfcprop%uustar(ix)
-          sfcdsw(i,j) = IPD_Data(nb)%Coupling%sfcdsw(ix)
           slmsk(i,j)  = IPD_Data(nb)%Sfcprop%slmsk(ix)
-          snowd(i,j)  = IPD_Data(nb)%Sfcprop%snowd(ix)
           tsfc(i,j)   = IPD_Data(nb)%Sfcprop%tsfc(ix)
-          shfsfc(i,j) = IPD_Data(nb)%Coupling%ushfsfci(ix)
-          vtype(i,j)  = IPD_Data(nb)%Sfcprop%vtype(ix)
-          vfrac(i,j)  = IPD_Data(nb)%Sfcprop%vfrac(ix)
           zorl(i,j)   = IPD_Data(nb)%Sfcprop%zorl(ix)
+          if (IPD_Control%cplgocart) then
+            dtsfc(i,j)  = IPD_Data(nb)%Coupling%dtsfci_cpl(ix)
+            u10m(i,j)   = IPD_Data(nb)%Coupling%u10mi_cpl(ix)
+            v10m(i,j)   = IPD_Data(nb)%Coupling%v10mi_cpl(ix)
+            focn(i,j)   = IPD_Data(nb)%Sfcprop%oceanfrac(ix)
+            flake(i,j)  = max(zero, IPD_Data(nb)%Sfcprop%lakefrac(ix))
+            fice(i,j)   = IPD_Data(nb)%Sfcprop%fice(ix)
+          else
+            stype(i,j)  = IPD_Data(nb)%Sfcprop%stype(ix)
+            sfcdsw(i,j) = IPD_Data(nb)%Coupling%sfcdsw(ix)
+            snowd(i,j)  = IPD_Data(nb)%Sfcprop%snowd(ix)
+            shfsfc(i,j) = IPD_Data(nb)%Coupling%ushfsfci(ix)
+            vtype(i,j)  = IPD_Data(nb)%Sfcprop%vtype(ix)
+            vfrac(i,j)  = IPD_Data(nb)%Sfcprop%vfrac(ix)
           slc(i,j,:)  = IPD_Data(nb)%Sfcprop%slc(ix,:)
+          end if
         enddo
       enddo
 
@@ -1521,6 +1561,14 @@ subroutine update_atmos_chemistry(state, rc)
         write(6,'("update_atmos: stype  - min/max/avg",3g16.6)') minval(stype),  maxval(stype),  sum(stype)/size(stype)
         write(6,'("update_atmos: zorl   - min/max/avg",3g16.6)') minval(zorl),   maxval(zorl),   sum(zorl)/size(zorl)
         write(6,'("update_atmos: slc    - min/max/avg",3g16.6)') minval(slc),    maxval(slc),    sum(slc)/size(slc)
+        if (IPD_Control%cplgocart) then
+          write(6,'("update_atmos: dtsfc  - min/max/avg",3g16.6)') minval(dtsfc),   maxval(dtsfc),   sum(dtsfc)/size(dtsfc)
+          write(6,'("update_atmos: fice   - min/max/avg",3g16.6)') minval(fice),    maxval(fice),    sum(fice)/size(fice)
+          write(6,'("update_atmos: flake  - min/max/avg",3g16.6)') minval(flake),   maxval(flake),   sum(flake)/size(flake)
+          write(6,'("update_atmos: focn   - min/max/avg",3g16.6)') minval(focn),    maxval(focn),    sum(focn)/size(focn)
+          write(6,'("update_atmos: u10m   - min/max/avg",3g16.6)') minval(u10m),    maxval(u10m),    sum(u10m)/size(u10m)
+          write(6,'("update_atmos: v10m   - min/max/avg",3g16.6)') minval(v10m),    maxval(v10m),    sum(v10m)/size(v10m)
+        end if
       end if
 
     case default

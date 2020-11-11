@@ -13,7 +13,7 @@ module module_cplfields
   private
 
 ! Export Fields ----------------------------------------
-  integer,          public, parameter :: NexportFields = 71
+  integer,          public, parameter :: NexportFields = 74
   type(ESMF_Field), target, public    :: exportFields(NexportFields)
   character(len=*), public, parameter :: exportFieldsList(NexportFields) = (/ &
        "inst_pres_interface                      ", &
@@ -86,7 +86,10 @@ module module_cplfields
        "inst_merid_wind_height_lowest            ", &
        "inst_pres_height_lowest                  ", &
        "inst_height_lowest                       ", &
-       "mean_fprec_rate                          "  &
+       "mean_fprec_rate                          ", &
+       "ice_fraction                             ", &
+       "lake_fraction                            ", &
+       "ocean_fraction                           "  &
 !      "northward_wind_neutral                   ", &
 !      "eastward_wind_neutral                    ", &
 !      "upward_wind_neutral                      ", &
@@ -112,7 +115,7 @@ module module_cplfields
        "s","s","s","s","s","s","s","s",     &
        "s","s","s","s","s","s","s","s",     &
        "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s"                  &
+       "s","s","s","s","s","s","s","s"      &
 !      "l","l","l","l","l","l","l","s",     &
   /)
   ! Set exportFieldShare to .true. for all exported fields
