@@ -1111,7 +1111,7 @@ subroutine update_atmos_chemistry(state, rc)
 
   real(ESMF_KIND_R8), dimension(:,:), pointer :: hpbl, area, stype, rainc, &
     uustar, rain, sfcdsw, slmsk, tsfc, shfsfc, snowd, vtype, vfrac, zorl,  &
-    dtsfc, focn, flake, fice, u10m, v10m
+    dtsfc, focn, flake, fice, u10m, v10m, swet
 
 ! logical, parameter :: diag = .true.
 
@@ -1419,6 +1419,10 @@ subroutine update_atmos_chemistry(state, rc)
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__, file=__FILE__, rcToReturn=rc)) return
 
+        call cplFieldGet(state,'inst_surface_soil_wetness', farrayPtr2d=swet, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
         call cplFieldGet(state,'ice_fraction', farrayPtr2d=fice, rc=localrc)
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__, file=__FILE__, rcToReturn=rc)) return
@@ -1501,7 +1505,7 @@ subroutine update_atmos_chemistry(state, rc)
 !$OMP             shared  (nj, ni, Atm_block, IPD_Data, IPD_Control, &
 !$OMP                      hpbl, area, stype, rainc, rain, uustar, sfcdsw, &
 !$OMP                      dtsfc, fice, flake, focn, u10m, v10m, &
-!$OMP                      slmsk, snowd, tsfc, shfsfc, vtype, vfrac, zorl, slc) &
+!$OMP                      slmsk, snowd, swet, tsfc, shfsfc, vtype, vfrac, zorl, slc) &
 !$OMP             private (j, jb, i, ib, nb, ix)
       do j = 1, nj
         jb = j + Atm_block%jsc - 1
@@ -1522,6 +1526,7 @@ subroutine update_atmos_chemistry(state, rc)
             dtsfc(i,j)  = IPD_Data(nb)%Coupling%dtsfci_cpl(ix)
             u10m(i,j)   = IPD_Data(nb)%Coupling%u10mi_cpl(ix)
             v10m(i,j)   = IPD_Data(nb)%Coupling%v10mi_cpl(ix)
+            swet(i,j)   = IPD_Data(nb)%IntDiag%wet1(ix)
             focn(i,j)   = IPD_Data(nb)%Sfcprop%oceanfrac(ix)
             flake(i,j)  = max(zero, IPD_Data(nb)%Sfcprop%lakefrac(ix))
             fice(i,j)   = IPD_Data(nb)%Sfcprop%fice(ix)
@@ -1532,7 +1537,7 @@ subroutine update_atmos_chemistry(state, rc)
             shfsfc(i,j) = IPD_Data(nb)%Coupling%ushfsfci(ix)
             vtype(i,j)  = IPD_Data(nb)%Sfcprop%vtype(ix)
             vfrac(i,j)  = IPD_Data(nb)%Sfcprop%vfrac(ix)
-          slc(i,j,:)  = IPD_Data(nb)%Sfcprop%slc(ix,:)
+            slc(i,j,:)  = IPD_Data(nb)%Sfcprop%slc(ix,:)
           end if
         enddo
       enddo
@@ -1583,6 +1588,7 @@ subroutine update_atmos_chemistry(state, rc)
         write(6,'("update_atmos: zorl   - min/max/avg",3g16.6)') minval(zorl),   maxval(zorl),   sum(zorl)/size(zorl)
         write(6,'("update_atmos: slc    - min/max/avg",3g16.6)') minval(slc),    maxval(slc),    sum(slc)/size(slc)
         if (IPD_Control%cplgocart) then
+          write(6,'("update_atmos: swet   - min/max/avg",3g16.6)') minval(swet),    maxval(swet),    sum(swet)/size(swet)
           write(6,'("update_atmos: pfils  - min/max/avg",3g16.6)') minval(pfils),   maxval(pfils),   sum(pfils)/size(pfils)
           write(6,'("update_atmos: pflls  - min/max/avg",3g16.6)') minval(pflls),   maxval(pflls),   sum(pflls)/size(pflls)
           write(6,'("update_atmos: dtsfc  - min/max/avg",3g16.6)') minval(dtsfc),   maxval(dtsfc),   sum(dtsfc)/size(dtsfc)

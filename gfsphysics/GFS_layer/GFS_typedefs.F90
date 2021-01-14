@@ -2620,6 +2620,8 @@ module GFS_typedefs
           Sfcprop%xlaixy = clear_val
        end if
 
+       Diag%wet1 => Sfcprop%wetness
+
     end if
     if (Model%do_mynnsfclay) then
     ! For MYNN surface layer scheme

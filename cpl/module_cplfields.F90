@@ -13,7 +13,7 @@ module module_cplfields
   private
 
 ! Export Fields ----------------------------------------
-  integer,          public, parameter :: NexportFields = 76
+  integer,          public, parameter :: NexportFields = 77
   type(ESMF_Field), target, public    :: exportFields(NexportFields)
   character(len=*), public, parameter :: exportFieldsList(NexportFields) = (/ &
        "inst_pres_interface                      ", &
@@ -36,6 +36,7 @@ module module_cplfields
        "inst_friction_velocity                   ", &
        "inst_rainfall_amount                     ", &
        "inst_soil_moisture_content               ", &
+       "inst_surface_soil_wetness                ", &
        "inst_up_sensi_heat_flx                   ", &
        "inst_lwe_snow_thickness                  ", &
        "vegetation_type                          ", &
@@ -110,7 +111,7 @@ module module_cplfields
   !  t : tracers (4D)
   character(len=*), public, parameter :: exportFieldTypes(NexportFields) = (/ &
        "i","l","i","l","l","l","l","l","t", &
-       "s","s","s","s","l","l","l","l","s","s","g", &
+       "s","s","s","s","l","l","l","l","s","s","g","s", &
        "s","s","s","s","s","s","s","s",     &
        "s","s","s","s","s","s","s","s",     &
        "s","s","s","s","s","s","s","s",     &
