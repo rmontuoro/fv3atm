@@ -1100,11 +1100,12 @@ subroutine update_atmos_chemistry(state, rc)
   integer :: nb, ix, i, j, k, it
   integer :: ib, jb
 
-  real(ESMF_KIND_R8), dimension(:,:,:),   pointer :: prsl, phil,  &
-                                                     prsi, phii,  &
-                                                     temp, dqdt,  &
-                                                     ua, va, vvl, &
-                                                     dkt, slc,    &
+  real(ESMF_KIND_R8), dimension(:,:,:),   pointer :: prsl, phil,   &
+                                                     prsi, phii,   &
+                                                     temp, dqdt,   &
+                                                     ua, va, vvl,  &
+                                                     dkt, slc,     &
+                                                     pflls, pfils, &
                                                      qb, qm, qu
   real(ESMF_KIND_R8), dimension(:,:,:,:), pointer :: qd, q
 
@@ -1324,6 +1325,16 @@ subroutine update_atmos_chemistry(state, rc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__, file=__FILE__, rcToReturn=rc)) return
 
+      call cplFieldGet(state,'inst_liq_nonconv_tendency_levels', &
+                       farrayPtr3d=pflls, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+      call cplFieldGet(state,'inst_ice_nonconv_tendency_levels', &
+                       farrayPtr3d=pfils, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
       call cplFieldGet(state,'inst_tracer_mass_frac', farrayPtr4d=q, rc=localrc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__, file=__FILE__, rcToReturn=rc)) return
@@ -1424,7 +1435,7 @@ subroutine update_atmos_chemistry(state, rc)
       !--- handle all three-dimensional variables
 !$OMP parallel do default (none) &
 !$OMP             shared  (nk, nj, ni, Atm_block, IPD_Data, IPD_Control, &
-!$OMP                      prsi, phii, prsl, phil, temp, ua, va, vvl, dkt, dqdt)  &
+!$OMP                      pfils, pflls,  prsi, phii, prsl, phil, temp, ua, va, vvl, dkt, dqdt)  &
 !$OMP             private (k, j, jb, i, ib, nb, ix)
       do k = 1, nk
         do j = 1, nj
@@ -1442,7 +1453,10 @@ subroutine update_atmos_chemistry(state, rc)
             temp(i,j,k) = IPD_Data(nb)%Stateout%gt0(ix,k)
             ua  (i,j,k) = IPD_Data(nb)%Stateout%gu0(ix,k)
             va  (i,j,k) = IPD_Data(nb)%Stateout%gv0(ix,k)
-            if (.not.IPD_Control%cplgocart) then
+            if (IPD_Control%cplgocart) then
+              pfils(i,j,k) = IPD_Data(nb)%Coupling%pfi_lsan(ix,k)
+              pflls(i,j,k) = IPD_Data(nb)%Coupling%pfl_lsan(ix,k)
+            else
               vvl (i,j,k) = IPD_Data(nb)%Statein%vvl (ix,k)
               dkt (i,j,k) = IPD_Data(nb)%Coupling%dkt(ix,k)
               dqdt(i,j,k) = IPD_Data(nb)%Coupling%dqdti(ix,k)
@@ -1569,6 +1583,8 @@ subroutine update_atmos_chemistry(state, rc)
         write(6,'("update_atmos: zorl   - min/max/avg",3g16.6)') minval(zorl),   maxval(zorl),   sum(zorl)/size(zorl)
         write(6,'("update_atmos: slc    - min/max/avg",3g16.6)') minval(slc),    maxval(slc),    sum(slc)/size(slc)
         if (IPD_Control%cplgocart) then
+          write(6,'("update_atmos: pfils  - min/max/avg",3g16.6)') minval(pfils),   maxval(pfils),   sum(pfils)/size(pfils)
+          write(6,'("update_atmos: pflls  - min/max/avg",3g16.6)') minval(pflls),   maxval(pflls),   sum(pflls)/size(pflls)
           write(6,'("update_atmos: dtsfc  - min/max/avg",3g16.6)') minval(dtsfc),   maxval(dtsfc),   sum(dtsfc)/size(dtsfc)
           write(6,'("update_atmos: fice   - min/max/avg",3g16.6)') minval(fice),    maxval(fice),    sum(fice)/size(fice)
           write(6,'("update_atmos: flake  - min/max/avg",3g16.6)') minval(flake),   maxval(flake),   sum(flake)/size(flake)

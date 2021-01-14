@@ -348,7 +348,7 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
         qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt, qa_dt, pt_dt, pt, w,    &
         uin, vin, udt, vdt, dz, delp, area, dt_in, land, rain, snow, ice, &
         graupel, hydrostatic, phys_hydrostatic, iis, iie, jjs, jje, kks,  &
-        kke, ktop, kbot, seconds,p,lradar,refl_10cm,reset)
+        kke, ktop, kbot, seconds,p,lradar,refl_10cm,reset,pfi_ls,pfl_ls)
     implicit none
     
     logical, intent (in) :: hydrostatic, phys_hydrostatic,lradar
@@ -373,7 +373,9 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
     
     real, intent (out), dimension (:, :, :) :: refl_10cm
     real, intent (out), dimension (:, :) :: rain, snow, ice, graupel
-    
+
+    real, intent (out), dimension (:, :, :), optional :: pfi_ls, pfl_ls
+
     logical :: melti = .false.
     ! logical :: used
     
@@ -475,6 +477,8 @@ subroutine gfdl_cloud_microphys_driver (qv, ql, qr, qi, qs, qg, qa, qn,   &
             m2_sol, cond (:, j), area (:, j), land (:, j), udt, vdt, pt_dt,    &
             qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt, qa_dt, w_var, vt_r,      &
             vt_s, vt_g, vt_i, qn2)
+        if (present(pfi_ls)) pfi_ls(is:ie, j, kks:kke) = m2_sol
+        if (present(pfl_ls)) pfl_ls(is:ie, j, kks:kke) = m2_rain
     enddo
     
     ! -----------------------------------------------------------------------

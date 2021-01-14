@@ -661,6 +661,10 @@ module module_physics_driver
       real(kind=kind_phys), allocatable, dimension(:,:) :: den
 
       real(kind=kind_phys) :: lndp_vgf  
+! For chemistry
+      real(kind=kind_phys), pointer, dimension(:,:,:) :: pfi_ls => null()
+      real(kind=kind_phys), pointer, dimension(:,:,:) :: pfl_ls => null()
+
       !! Initialize local variables (for debugging purposes only,
       !! because the corresponding variables Interstitial(nt)%...
       !! are reset to zero every time).
@@ -5235,6 +5239,16 @@ module module_physics_driver
             enddo
           enddo
 
+          if (Model%cplgocart) then
+            allocate(pfi_ls(im,1,levs))
+            allocate(pfl_ls(im,1,levs))
+            do k = 1, levs
+              do i = 1, im
+                pfi_ls(i,1,k) = zero
+                pfl_ls(i,1,k) = zero
+              enddo
+            enddo
+          endif
 
           call gfdl_cloud_microphys_driver(qv1, ql1, qr1, qi1, qs1, qg1, qa1, &
                                            qn1, qv_dt, ql_dt, qr_dt, qi_dt,   &
@@ -5244,7 +5258,7 @@ module module_physics_driver
                                            ice0, graupel0, .false., .true.,   &
                                            1, im, 1, 1, 1, levs, 1, levs,     &
                                            seconds,p123,Model%lradar,refl,    &
-                                           reset)
+                                           reset, pfl_ls=pfl_ls, pfi_ls=pfi_ls)
           tem = dtp * con_p001 / con_day
           do i = 1, im
 !           rain0(i,1)     = max(zero, rain0(i,1))
@@ -5359,6 +5373,20 @@ module module_physics_driver
 !             enddo
 !           enddo
 
+          endif
+
+          if (Model%cplgocart) then
+            do k = 1, levs
+              kk = levs-k+1
+              do i=1,im
+                Coupling%pfi_lsan(i,k) = pfi_ls(i,1,kk)
+                Coupling%pfl_lsan(i,k) = pfl_ls(i,1,kk)
+              enddo
+            enddo
+            deallocate (pfi_ls)
+            nullify (pfi_ls)
+            deallocate (pfl_ls)
+            nullify (pfl_ls)
           endif
 
         endif  ! end of if(Model%imp_physics)
