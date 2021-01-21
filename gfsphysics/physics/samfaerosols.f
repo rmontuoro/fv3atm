@@ -67,6 +67,7 @@ c     -- initialize work variables
       ecdo2     = zero
       ecko2     = zero
       qaero     = zero
+      wet_dep   = zero
 
 c     -- set work arrays
 
@@ -468,6 +469,7 @@ c     -- initialize work variables
       !ecdo2     = zero
       ecko2     = zero
       qaero     = zero
+      wet_dep   = zero
 
 c     -- set work arrays
 
