@@ -1106,7 +1106,8 @@ subroutine update_atmos_chemistry(state, rc)
                                                      ua, va, vvl,  &
                                                      dkt, slc,     &
                                                      pflls, pfils, &
-                                                     qb, qm, qu
+                                                     qb, qm, qu,   &
+                                                     cldf
   real(ESMF_KIND_R8), dimension(:,:,:,:), pointer :: qd, q
 
   real(ESMF_KIND_R8), dimension(:,:), pointer :: hpbl, area, stype, rainc, &
@@ -1407,6 +1408,10 @@ subroutine update_atmos_chemistry(state, rc)
         line=__LINE__, file=__FILE__, rcToReturn=rc)) return
 
       if (IPD_Control%cplgocart) then
+        call cplFieldGet(state,'inst_cloud_frac_levels', farrayPtr3d=cldf, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
         call cplFieldGet(state,'inst_zonal_wind_height10m', farrayPtr2d=u10m, rc=localrc)
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__, file=__FILE__, rcToReturn=rc)) return
@@ -1439,7 +1444,8 @@ subroutine update_atmos_chemistry(state, rc)
       !--- handle all three-dimensional variables
 !$OMP parallel do default (none) &
 !$OMP             shared  (nk, nj, ni, Atm_block, IPD_Data, IPD_Control, &
-!$OMP                      pfils, pflls,  prsi, phii, prsl, phil, temp, ua, va, vvl, dkt, dqdt)  &
+!$OMP                      cldf, pfils, pflls,  prsi, phii, prsl, phil,  &
+!$OMP                      temp, ua, va, vvl, dkt, dqdt)  &
 !$OMP             private (k, j, jb, i, ib, nb, ix)
       do k = 1, nk
         do j = 1, nj
@@ -1458,6 +1464,7 @@ subroutine update_atmos_chemistry(state, rc)
             ua  (i,j,k) = IPD_Data(nb)%Stateout%gu0(ix,k)
             va  (i,j,k) = IPD_Data(nb)%Stateout%gv0(ix,k)
             if (IPD_Control%cplgocart) then
+              cldf (i,j,k) = IPD_Data(nb)%Coupling%cldcov(ix,k)
               pfils(i,j,k) = IPD_Data(nb)%Coupling%pfi_lsan(ix,k)
               pflls(i,j,k) = IPD_Data(nb)%Coupling%pfl_lsan(ix,k)
             else
@@ -1588,6 +1595,7 @@ subroutine update_atmos_chemistry(state, rc)
         write(6,'("update_atmos: zorl   - min/max/avg",3g16.6)') minval(zorl),   maxval(zorl),   sum(zorl)/size(zorl)
         write(6,'("update_atmos: slc    - min/max/avg",3g16.6)') minval(slc),    maxval(slc),    sum(slc)/size(slc)
         if (IPD_Control%cplgocart) then
+          write(6,'("update_atmos: cldf   - min/max/avg",3g16.6)') minval(cldf),    maxval(cldf),    sum(cldf)/size(cldf)
           write(6,'("update_atmos: swet   - min/max/avg",3g16.6)') minval(swet),    maxval(swet),    sum(swet)/size(swet)
           write(6,'("update_atmos: pfils  - min/max/avg",3g16.6)') minval(pfils),   maxval(pfils),   sum(pfils)/size(pfils)
           write(6,'("update_atmos: pflls  - min/max/avg",3g16.6)') minval(pflls),   maxval(pflls),   sum(pflls)/size(pflls)

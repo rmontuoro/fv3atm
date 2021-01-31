@@ -1839,6 +1839,17 @@
 
 !     endif                                ! end_if_ntcw
 
+!  --- export cloud fraction from moist physics
+
+      if (Model%cplgocart) then
+        do k = 1, LM
+          k1 = k + kd
+          do i = 1, IM
+            Coupling%cldcov(i,k) = cldcov(i,k1)
+          enddo
+        enddo
+      endif
+
 !  --- ...  start radiation calculations
 !           remember to set heating rate unit to k/sec!
 
