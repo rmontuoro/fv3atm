@@ -2619,6 +2619,7 @@ module module_physics_driver
 ! initialized in GFS_typedefs.F90/interstitial_phys_reset; ntiwx is set in 
 ! GFS_typedef.F90/interstitial_setup_tracers
         allocate(vdftra(ix,levs,nvdiff), dvdftra(im,levs,nvdiff))
+        vdftra (:,:,:) = zero
         dvdftra(:,:,:) = zero
         ntiwx = 0
 !
