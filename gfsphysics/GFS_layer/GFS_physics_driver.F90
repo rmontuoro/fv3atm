@@ -662,8 +662,7 @@ module module_physics_driver
 
       real(kind=kind_phys) :: lndp_vgf  
 ! For chemistry
-      real(kind=kind_phys), pointer, dimension(:,:,:) :: pfi_ls => null()
-      real(kind=kind_phys), pointer, dimension(:,:,:) :: pfl_ls => null()
+      real(kind=kind_phys), allocatable, dimension(:,:,:) :: pfi_ls, pfl_ls
 
       !! Initialize local variables (for debugging purposes only,
       !! because the corresponding variables Interstitial(nt)%...
@@ -5249,17 +5248,29 @@ module module_physics_driver
                 pfl_ls(i,1,k) = zero
               enddo
             enddo
+
+            call gfdl_cloud_microphys_driver(qv1, ql1, qr1, qi1, qs1, qg1, qa1, &
+                                             qn1, qv_dt, ql_dt, qr_dt, qi_dt,   &
+                                             qs_dt, qg_dt, qa_dt, pt_dt, pt, w, &
+                                             uin, vin, udt, vdt, dz, delp,      &
+                                             area, dtp, land, rain0, snow0,     &
+                                             ice0, graupel0, .false., .true.,   &
+                                             1, im, 1, 1, 1, levs, 1, levs,     &
+                                             seconds,p123,Model%lradar,refl,    &
+                                             reset, pfl_ls=pfl_ls, pfi_ls=pfi_ls)
+          else
+
+            call gfdl_cloud_microphys_driver(qv1, ql1, qr1, qi1, qs1, qg1, qa1, &
+                                             qn1, qv_dt, ql_dt, qr_dt, qi_dt,   &
+                                             qs_dt, qg_dt, qa_dt, pt_dt, pt, w, &
+                                             uin, vin, udt, vdt, dz, delp,      &
+                                             area, dtp, land, rain0, snow0,     &
+                                             ice0, graupel0, .false., .true.,   &
+                                             1, im, 1, 1, 1, levs, 1, levs,     &
+                                             seconds,p123,Model%lradar,refl,    &
+                                             reset)
           endif
 
-          call gfdl_cloud_microphys_driver(qv1, ql1, qr1, qi1, qs1, qg1, qa1, &
-                                           qn1, qv_dt, ql_dt, qr_dt, qi_dt,   &
-                                           qs_dt, qg_dt, qa_dt, pt_dt, pt, w, &
-                                           uin, vin, udt, vdt, dz, delp,      &
-                                           area, dtp, land, rain0, snow0,     &
-                                           ice0, graupel0, .false., .true.,   &
-                                           1, im, 1, 1, 1, levs, 1, levs,     &
-                                           seconds,p123,Model%lradar,refl,    &
-                                           reset, pfl_ls=pfl_ls, pfi_ls=pfi_ls)
           tem = dtp * con_p001 / con_day
           do i = 1, im
 !           rain0(i,1)     = max(zero, rain0(i,1))
@@ -5385,9 +5396,7 @@ module module_physics_driver
               enddo
             enddo
             deallocate (pfi_ls)
-            nullify (pfi_ls)
             deallocate (pfl_ls)
-            nullify (pfl_ls)
           endif
 
         endif  ! end of if(Model%imp_physics)
