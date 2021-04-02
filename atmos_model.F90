@@ -1561,6 +1561,7 @@ subroutine update_atmos_chemistry(state, rc)
           slmsk(i,j)  = IPD_Data(nb)%Sfcprop%slmsk(ix)
           tsfc(i,j)   = IPD_Data(nb)%Sfcprop%tsfc(ix)
           zorl(i,j)   = IPD_Data(nb)%Sfcprop%zorl(ix)
+          slc(i,j,:)  = IPD_Data(nb)%Sfcprop%slc(ix,:)
           if (IPD_Control%cplgocart) then
             dtsfc(i,j)  = IPD_Data(nb)%Coupling%dtsfci_cpl(ix)
             u10m(i,j)   = IPD_Data(nb)%Coupling%u10mi_cpl(ix)
@@ -1577,7 +1578,6 @@ subroutine update_atmos_chemistry(state, rc)
             shfsfc(i,j) = IPD_Data(nb)%Coupling%ushfsfci(ix)
             vtype(i,j)  = IPD_Data(nb)%Sfcprop%vtype(ix)
             vfrac(i,j)  = IPD_Data(nb)%Sfcprop%vfrac(ix)
-            slc(i,j,:)  = IPD_Data(nb)%Sfcprop%slc(ix,:)
           end if
         enddo
       enddo
