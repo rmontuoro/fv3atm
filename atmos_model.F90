@@ -1112,7 +1112,7 @@ subroutine update_atmos_chemistry(state, rc)
 
   real(ESMF_KIND_R8), dimension(:,:), pointer :: hpbl, area, stype, rainc, &
     uustar, rain, sfcdsw, slmsk, tsfc, shfsfc, snowd, vtype, vfrac, zorl,  &
-    dtsfc, focn, flake, fice, u10m, v10m, swet
+    dtsfc, focn, flake, fice, fsnow, u10m, v10m, swet
 
 ! logical, parameter :: diag = .true.
 
@@ -1467,6 +1467,10 @@ subroutine update_atmos_chemistry(state, rc)
         call cplFieldGet(state,'ocean_fraction', farrayPtr2d=focn, rc=localrc)
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__, file=__FILE__, rcToReturn=rc)) return
+
+        call cplFieldGet(state,'surface_snow_area_fraction', farrayPtr2d=fsnow, rc=localrc)
+        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+          line=__LINE__, file=__FILE__, rcToReturn=rc)) return
       end if
 
       !--- handle all three-dimensional variables
@@ -1539,7 +1543,7 @@ subroutine update_atmos_chemistry(state, rc)
 !$OMP parallel do default (none) &
 !$OMP             shared  (nj, ni, Atm_block, IPD_Data, IPD_Control, &
 !$OMP                      hpbl, area, stype, rainc, rain, uustar, sfcdsw, &
-!$OMP                      dtsfc, fice, flake, focn, u10m, v10m, &
+!$OMP                      dtsfc, fice, flake, focn, fsnow, u10m, v10m, &
 !$OMP                      slmsk, snowd, swet, tsfc, shfsfc, vtype, vfrac, zorl, slc) &
 !$OMP             private (j, jb, i, ib, nb, ix)
       do j = 1, nj
@@ -1565,6 +1569,7 @@ subroutine update_atmos_chemistry(state, rc)
             focn(i,j)   = IPD_Data(nb)%Sfcprop%oceanfrac(ix)
             flake(i,j)  = max(zero, IPD_Data(nb)%Sfcprop%lakefrac(ix))
             fice(i,j)   = IPD_Data(nb)%Sfcprop%fice(ix)
+            fsnow(i,j)  = IPD_Data(nb)%Sfcprop%sncovr(ix)
           else
             stype(i,j)  = IPD_Data(nb)%Sfcprop%stype(ix)
             sfcdsw(i,j) = IPD_Data(nb)%Coupling%sfcdsw(ix)
