@@ -13,7 +13,7 @@ module module_cplfields
   private
 
 ! Export Fields ----------------------------------------
-  integer,          public, parameter :: NexportFields = 79
+  integer,          public, parameter :: NexportFields = 80
   type(ESMF_Field), target, public    :: exportFields(NexportFields)
   character(len=*), public, parameter :: exportFieldsList(NexportFields) = (/ &
        "inst_pres_interface                      ", &
@@ -95,6 +95,7 @@ module module_cplfields
        "lake_fraction                            ", &
        "ocean_fraction                           ", &
        "surface_snow_area_fraction               "  &
+       "openwater_frac_in_atm                    "  &
 !      "northward_wind_neutral                   ", &
 !      "eastward_wind_neutral                    ", &
 !      "upward_wind_neutral                      ", &
@@ -112,17 +113,15 @@ module module_cplfields
   !  s : surface (2D)
   !  t : tracers (4D)
   character(len=*), public, parameter :: exportFieldTypes(NexportFields) = (/ &
-       "i","l","i","l","l","l","l","l","t", &
-       "s","s","s","s","l","l","l","l","l","s","s","g","s", &
-       "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s","s","s","s",     &
-       "s","s","s","s","s","s","s","s",     &
-       "s"                                  &
-!      "l","l","l","l","l","l","l","s",     &
+       "i","l","i","l","l","l","l","l","t","s", &
+       "s","s","s","l","l","l","l","l","s","s", &
+       "g","s","s","s","s","s","s","s","s","s", &
+       "s","s","s","s","s","s","s","s","s","s", &
+       "s","s","s","s","s","s","s","s","s","s", &
+       "s","s","s","s","s","s","s","s","s","s", &
+       "s","s","s","s","s","s","s","s","s","s", &
+       "s","s","s","s","s","s","s","s","s","s", &
+!      "l","l","l","l","l","l","l","s"          &
   /)
   ! Set exportFieldShare to .true. for all exported fields
   ! to allow coupled components to access such fields via
@@ -205,7 +204,7 @@ module module_cplfields
       isCreated = ESMF_FieldIsCreated(exportFields(n), rc=localrc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__, rcToReturn=rc)) return
       if (isCreated) then
-! set data 
+! set data
         call ESMF_FieldGet(exportFields(n), name=fieldname, dimCount=dimCount, typekind=datatype, rc=localrc)
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__, rcToReturn=rc)) return
         !print *,'in fillExportFields, field created n=',n,size(exportFields),'name=', trim(fieldname)
